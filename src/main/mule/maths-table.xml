@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:sdc="http://www.mulesoft.org/schema/mule/sdc" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/sdc http://www.mulesoft.org/schema/mule/sdc/current/mule-sdc.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="636ef6bc-de02-4e50-bcb2-928a9736cd59" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<file:config name="File_Config" doc:name="File Config" doc:id="1bb2677b-3e9e-432d-b9c2-183546e006eb" />
+	<flow name="maths-tableFlow" doc:id="7b9178ef-6602-486d-9bed-7f3f0df4c86a" >
+		<http:listener doc:name="Listener" doc:id="82f4df6f-af94-4e9c-bbb1-e6029ea2f858" config-ref="HTTP_Listener_config" path="/table"/>
+		<logger level="INFO" doc:name="start flow" doc:id="f6fecccc-89e6-42b6-984a-16dccd72775e" message="---------start flow------"/>
+		<ee:cache doc:name="Cache" doc:id="73250c93-2091-48cf-8703-aa997f69926e" >
+			<logger level="INFO" doc:name="inside" doc:id="769691ad-415b-4b23-9f54-71fc16e92f9c" message="#[payload]"/>
+		</ee:cache>
+		<ee:transform doc:name="logic" doc:id="512954b5-d060-4fe5-9ee1-3af01052319f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var n = payload.num as Number
+var s = payload.str as Number
+var e = payload.end as Number
+
+---
+(s to e) map (i) ->
+    n ++ " x " ++ i ++ " = " ++ (n * i)
+ ]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="End flow" doc:id="f1af4145-2a51-4b56-bc43-02e2e2a00e59" message="---------------------End flow-----------------#[payload]"/>
+		<file:write doc:name="Write" doc:id="2b71af68-c943-4511-ae1b-0ca460efbc98" config-ref="File_Config" path='C:\Users\91938\Desktop\file-maths\file.table2'/>
+		<file:move doc:name="Move" doc:id="6a2a386e-b9ab-4793-b7cc-1f9e797ded4d" config-ref="File_Config" sourcePath='C:\Users\91938\Desktop\file-maths\file.table2' targetPath="C:\Users\91938\Desktop\file-maths\backup" renameTo='#[now() as String {format: "yyyyMMdd_HHmmss"}]'/>
+	</flow>
+</mule>
