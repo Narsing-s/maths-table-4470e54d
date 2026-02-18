@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Maths Table — Mule Flow UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="./assets/styles.css" />
+</head>
+<body>
+  <header class="header">
+    <h1>Maths Table Generator</h1>
+    <p>Calls Mule flow at <code>/table</code> and shows the result.</p>
+  </header>
+
+  <main class="container">
+    <form id="tableForm" class="card">
+      <div class="row">
+        <label for="num">Number (n)</label>
+        <input id="num" name="num" type="number" placeholder="e.g., 5" required />
+      </div>
+
+      <div class="row">
+        <label for="start">Start (s)</label>
+        <input id="start" name="start" type="number" placeholder="e.g., 1" required />
+      </div>
+
+      <div class="row">
+        <label for="end">End (e)</label>
+        <input id="end" name="end" type="number" placeholder="e.g., 10" required />
+      </div>
+
+      <div class="row">
+        <label for="apiBase">API Base URL</label>
+        <input id="apiBase" name="apiBase" type="text" value="http://localhost:8081" />
+        <small>Change this if your API is hosted elsewhere.</small>
+      </div>
+
+      <div class="actions">
+        <button type="submit">Generate</button>
+        <button type="button" id="resetBtn" class="secondary">Reset</button>
+      </div>
+    </form>
+
+    <section class="card">
+      <h2>Result</h2>
+      <div id="status" class="status"></div>
+      <pre id="output" class="output" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <small>© <span id="year"></span> Maths Table UI • Powered by Mule</small>
+  </footer>
+
+  <script>
+    const form = document.getElementById('tableForm');
+    const output = document.getElementById('output');
+    const statusEl = document.getElementById('status');
+    const resetBtn = document.getElementById('resetBtn');
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    function setStatus(msg, type = 'info') {
+      statusEl.textContent = msg;
+      statusEl.className = `status ${type}`;
+    }
+
+    function validateRange(n, s, e) {
+      if (Number.isNaN(n) || Number.isNaN(s) || Number.isNaN(e)) {
+        throw new Error('All inputs must be numbers.');
+      }
+      if (!Number.isInteger(n) || !Number.isInteger(s) || !Number.isInteger(e)) {
+        // Mule casts to Number; integers make sense for tables, but we’ll allow numbers.
+      }
+      if (e < s) throw new Error('End (e) must be greater than or equal to Start (s).');
+      if ((e - s) > 1000) throw new Error('Range too large. Please limit (e - s) ≤ 1000.');
+    }
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      output.textContent = '';
+      setStatus('Calling Mule API...', 'info');
+
+      const n = Number(document.getElementById('num').value);
+      const s = Number(document.getElementById('start').value);
+      const e = Number(document.getElementById('end').value);
+      const apiBase = document.getElementById('apiBase').value.replace(/\/$/, '');
+
+      try {
+        validateRange(n, s, e);
+        const res = await fetch(`${apiBase}/table`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            num: n,
+            str: s,  // matches your DataWeave variables: payload.str
+            end: e
+          })
+        });
+
+        const text = await res.text();
+        let data;
+
+        // Try to parse JSON; if it fails, show raw text
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+
+        if (!res.ok) {
+          setStatus(`Error ${res.status}: ${res.statusText}`, 'error');
+          output.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+          return;
+        }
+
+        setStatus('Success!', 'success');
+
+        // Your DataWeave returns a JSON array of lines, e.g. ["5 x 1 = 5", ...]
+        if (Array.isArray(data)) {
+          output.textContent = data.join('\n');
+        } else {
+          output.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        }
+      } catch (err) {
+        setStatus(err.message, 'error');
+      }
+    });
+
+    resetBtn.addEventListener('click', () => {
+      form.reset();
+      output.textContent = '';
+      setStatus('');
+    });
+  </script>
+</body>
+</html>
