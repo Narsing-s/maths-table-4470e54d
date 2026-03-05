@@ -1,7 +1,6 @@
 {
   "name": "maths-table",
   "version": "1.0.0",
-  "description": "Maths table generator app",
   "main": "app.js",
   "scripts": {
     "start": "node app.js"
