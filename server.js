@@ -91,11 +91,6 @@ const UI_HTML = `<!doctype html>
     .field label{font-size:12px; color:var(--muted)}
     .value{font-size:20px; min-height:26px; letter-spacing:.2px}
 
-    .chips{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 12px}
-    .chip{padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.06); color:var(--text); cursor:pointer; user-select:none}
-    .chip:hover{background:rgba(255,255,255,.12)}
-    .chip.active{background:linear-gradient(135deg, var(--accent), var(--accent2)); border:none; color:#071225}
-
     .request-box, .result-box{
       border:1px dashed rgba(255,255,255,.16); background:rgba(255,255,255,.04);
       border-radius:var(--radius-sm); padding:12px; font-family:var(--mono); white-space:pre-wrap; word-break:break-word
@@ -186,13 +181,6 @@ const UI_HTML = `<!doctype html>
             </div>
           </div>
 
-          <div class="chips" id="chipRange">
-            <div class="chip" data-str="1" data-end="10">1–10</div>
-            <div class="chip" data-str="1" data-end="20">1–20</div>
-            <div class="chip active" data-str="1" data-end="50">1–50</div>
-            <div class="chip" data-str="1" data-end="100">1–100</div>
-          </div>
-
           <div class="request-box" id="reqJson">Request body will appear here.</div>
 
           <div class="actions">
@@ -257,6 +245,12 @@ const UI_HTML = `<!doctype html>
           <label><input id="soundToggle" type="checkbox" /> Enable click sound</label>
           <small style="color: var(--muted)">Soft click on keypad/chip taps.</small>
         </div>
+        <!-- Infinite Mode -->
+        <div class="form-row">
+          <label><input id="infiniteToggle" type="checkbox" /> Enable Infinite mode (client)</label>
+          <small style="color: var(--muted)">When ON, leave <b>End</b> blank (or type <b>∞</b>) and press <b>Start Infinite</b>. Use <b>Stop</b> to halt.</small>
+        </div>
+
         <div class="actions">
           <button class="btn primary" id="saveSettings">Save Settings</button>
           <button class="btn" id="resetSettings">Reset Defaults</button>
@@ -271,22 +265,22 @@ const UI_HTML = `<!doctype html>
 
   <!-- Bottom nav -->
   <nav class="bottom-nav">
-    <a class="nav-item active" href="#" data-screen="table">
+    <a href="#table" class="nav-item active" data-screen="table">
       <div class="nav-ico">🧮</div>
       <div class="nav-label">Table</div>
     </a>
-    <a class="nav-item" href="#" data-screen="history">
+    <a href="#history" class="nav-item" data-screen="history">
       <div class="nav-ico">🕘</div>
       <div class="nav-label">History</div>
     </a>
-    <a class="nav-item" href="#" data-screen="settings">
+    <a href="#settings" class="nav-item" data-screen="settings">
       <div class="nav-ico">⚙️</div>
       <div class="nav-label">Settings</div>
     </a>
   </nav>
 
   <script>
-    const $ = (id) => document.getElementById(id);
+    const $ = function(id){ return document.getElementById(id); };
     $("year").textContent = new Date().getFullYear();
 
     /* =========================
@@ -296,7 +290,7 @@ const UI_HTML = `<!doctype html>
     const savedTheme = localStorage.getItem(THEME_KEY);
     if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
     $("theme").checked = (document.documentElement.getAttribute("data-theme") === "light");
-    $("theme").addEventListener("change", () => {
+    $("theme").addEventListener("change", function(){
       const mode = $("theme").checked ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", mode);
       localStorage.setItem(THEME_KEY, mode);
@@ -306,29 +300,28 @@ const UI_HTML = `<!doctype html>
        Settings
     ========================== */
     const BASE_KEY = "maths-ui-base";
-    const MULE_KEY = "maths-ui-mule";
     const HIST_KEY = "maths-ui-history";
     const HAPTICS_KEY = "maths-ui-haptics";
     const SOUND_KEY   = "maths-ui-sound";
+    const INFINITE_KEY= "maths-ui-infinite";
 
     function normBase(b){ b=(b||"").trim().replace(/\\s+/g,""); b=b.replace(/\\/+$/,""); return b || "/api"; }
 
-    let base = normBase(localStorage.getItem(BASE_KEY) || "/api");
+    var base = normBase(localStorage.getItem(BASE_KEY) || "/api");
     $("baseVal").textContent = base;
     $("baseInput").value = base;
-
-    // Display Mule URL for reference; server uses env var for actual proxy target
     $("muleInput").value = "${MULE_TABLE_URL}";
 
-    $("saveSettings").onclick = () => {
+    $("saveSettings").onclick = function(){
       feedback();
       base = normBase($("baseInput").value);
       localStorage.setItem(BASE_KEY, base);
       $("baseVal").textContent = base;
       alert("Settings saved");
       buildRequest();
+      updateComputeButtonLabel();
     };
-    $("resetSettings").onclick = () => {
+    $("resetSettings").onclick = function(){
       feedback();
       base = "/api";
       localStorage.setItem(BASE_KEY, base);
@@ -336,31 +329,32 @@ const UI_HTML = `<!doctype html>
       $("baseVal").textContent = base;
       alert("Settings reset");
       buildRequest();
+      updateComputeButtonLabel();
     };
 
     /* =========================
        Haptics & Click Sound
     ========================== */
-    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    var prefersReducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    let hapticsOn = localStorage.getItem(HAPTICS_KEY);
-    hapticsOn = hapticsOn === null ? true : (hapticsOn === "true");
+    var hapticsOn = localStorage.getItem(HAPTICS_KEY);
+    hapticsOn = (hapticsOn === null) ? true : (hapticsOn === "true");
 
-    let soundOn = localStorage.getItem(SOUND_KEY);
-    soundOn = soundOn === null ? false : (soundOn === "true");
+    var soundOn = localStorage.getItem(SOUND_KEY);
+    soundOn = (soundOn === null) ? false : (soundOn === "true");
 
-    function vib(ms = 12) {
+    function vib(ms){
       if (prefersReducedMotion) return;
-      try { navigator.vibrate?.(ms); } catch {}
+      try { if (navigator.vibrate) navigator.vibrate(ms || 12); } catch(e){}
     }
 
-    let audioCtx;
-    function clickSound() {
+    var audioCtx;
+    function clickSound(){
       if (!soundOn) return;
-      try {
+      try{
         audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
+        var o = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
         o.type = "square";
         o.frequency.value = 220;
         g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
@@ -368,106 +362,158 @@ const UI_HTML = `<!doctype html>
         g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.06);
         o.connect(g); g.connect(audioCtx.destination);
         o.start(); o.stop(audioCtx.currentTime + 0.07);
-      } catch {}
+      }catch(e){}
     }
-
-    function feedback(short = true) {
-      if (hapticsOn && !prefersReducedMotion) vib(short ? 12 : 24);
+    function feedback(longer){
+      if (hapticsOn && !prefersReducedMotion) vib(longer ? 24 : 12);
       if (soundOn) clickSound();
     }
 
-    function initFeedbackSettingsUI() {
-      const hapticsEl = $("hapticsToggle");
-      const soundEl   = $("soundToggle");
-      if (!hapticsEl || !soundEl) return;
-      hapticsEl.checked = hapticsOn && !prefersReducedMotion;
-      soundEl.checked   = soundOn;
-
-      hapticsEl.addEventListener("change", () => {
-        hapticsOn = hapticsEl.checked && !prefersReducedMotion;
+    function initFeedbackSettingsUI(){
+      var h = $("hapticsToggle");
+      var s = $("soundToggle");
+      if (!h || !s) return;
+      h.checked = hapticsOn && !prefersReducedMotion;
+      s.checked = soundOn;
+      h.addEventListener("change", function(){
+        hapticsOn = h.checked && !prefersReducedMotion;
         localStorage.setItem(HAPTICS_KEY, String(hapticsOn));
         if (hapticsOn) vib(10);
       });
-      soundEl.addEventListener("change", () => {
-        soundOn = soundEl.checked;
+      s.addEventListener("change", function(){
+        soundOn = s.checked;
         localStorage.setItem(SOUND_KEY, String(soundOn));
         if (soundOn) clickSound();
       });
     }
 
     /* =========================
+       Infinite Mode
+    ========================== */
+    var infiniteOn = (localStorage.getItem(INFINITE_KEY) || "false") === "true";
+    var infiniteEl = $("infiniteToggle");
+    if (infiniteEl){
+      infiniteEl.checked = infiniteOn;
+      infiniteEl.addEventListener("change", function(){
+        infiniteOn = infiniteEl.checked;
+        localStorage.setItem(INFINITE_KEY, String(infiniteOn));
+        feedback();
+        updateComputeButtonLabel();
+      });
+    }
+
+    var runningInfinite = false;
+    var infiniteFrameId = null;
+
+    function appendLine(line){
+      var box = $("resultBox");
+      if (!box.dataset.mode || box.dataset.mode !== "infinite"){
+        box.dataset.mode = "infinite";
+        box.className = "result-box";
+        box.textContent = "";
+      }
+      box.textContent += (box.textContent ? "\\n" : "") + line;
+    }
+    function startInfinite(num, start){
+      var box = $("resultBox");
+      box.dataset.mode = "infinite";
+      box.className = "result-box";
+      box.textContent = "";
+      runningInfinite = true;
+      updateComputeButtonLabel();
+
+      var i = start;
+      var BATCH = 500;
+      function loop(){
+        if (!runningInfinite) return;
+        var n = Number(num);
+        for (var k=0; k<BATCH; k++, i++){
+          appendLine(n + " x " + i + " = " + (n * i));
+        }
+        infiniteFrameId = requestAnimationFrame(loop);
+      }
+      loop();
+    }
+    function stopInfinite(){
+      runningInfinite = false;
+      if (infiniteFrameId) cancelAnimationFrame(infiniteFrameId);
+      updateComputeButtonLabel();
+    }
+
+    function updateComputeButtonLabel(){
+      var btn = $("computeBtn");
+      var endVal = getVal("end");
+      if (infiniteOn && (endVal === "" || endVal === "∞")){
+        btn.textContent = runningInfinite ? "Stop" : "Start Infinite";
+      } else {
+        btn.textContent = "Compute";
+      }
+    }
+
+    /* =========================
        Navigation
     ========================== */
     function setScreen(name){
-      ["table","history","settings"].forEach(s => {
-        const el = $("screen-"+s);
+      ["table","history","settings"].forEach(function(s){
+        var el = $("screen-"+s);
         if (el) el.classList.toggle("active", s === name);
       });
-      document.querySelectorAll(".nav-item").forEach(a => {
-        const scr = a.getAttribute("data-screen");
+      Array.prototype.forEach.call(document.querySelectorAll(".nav-item"), function(a){
+        var scr = a.getAttribute("data-screen");
         a.classList.toggle("active", scr === name);
       });
       if (name === "history") renderHistory();
     }
-    document.querySelectorAll(".nav-item").forEach(a => a.addEventListener("click", e => {
-      e.preventDefault();
-      feedback();
-      setScreen(a.getAttribute("data-screen"));
-    }));
+    Array.prototype.forEach.call(document.querySelectorAll(".nav-item"), function(a){
+      a.addEventListener("click", function(e){
+        e.preventDefault();
+        feedback();
+        setScreen(a.getAttribute("data-screen"));
+      });
+    });
 
     /* =========================
        Field focus
     ========================== */
-    let active = "num";
+    var active = "num";
     function setActive(id){
       active = id;
-      ["num","str","end"].forEach(f => $("f-"+f).classList.toggle("active", f===id));
+      ["num","str","end"].forEach(function(f){ $("f-"+f).classList.toggle("active", f===id); });
+      updateComputeButtonLabel();
     }
-    $("f-num").addEventListener("click", ()=>{ feedback(); setActive("num"); });
-    $("f-str").addEventListener("click", ()=>{ feedback(); setActive("str"); });
-    $("f-end").addEventListener("click", ()=>{ feedback(); setActive("end"); });
-
-    /* =========================
-       Range chips
-    ========================== */
-    document.querySelectorAll("#chipRange .chip").forEach(c => c.addEventListener("click", () => {
-      feedback();
-      document.querySelectorAll("#chipRange .chip").forEach(e => e.classList.remove("active"));
-      c.classList.add("active");
-      $("str").textContent = c.getAttribute("data-str");
-      $("end").textContent = c.getAttribute("data-end");
-      buildRequest();
-    }));
+    $("f-num").addEventListener("click", function(){ feedback(); setActive("num"); });
+    $("f-str").addEventListener("click", function(){ feedback(); setActive("str"); });
+    $("f-end").addEventListener("click", function(){ feedback(); setActive("end"); });
 
     /* =========================
        Keypad
     ========================== */
-    $("pad").addEventListener("click", (e)=>{
-      const key = e.target.closest(".key");
+    $("pad").addEventListener("click", function(e){
+      var key = e.target.closest(".key");
       if (!key) return;
-      const act = key.getAttribute("data-act");
-      const label = key.textContent.trim();
+      var act = key.getAttribute("data-act");
+      var label = key.textContent.trim();
 
       feedback();
 
       if (act === "back") backspace();
       else if (act === "clear") clearActive();
-      else if (act === "compute") compute();
+      else if (act === "compute") $("computeBtn").click();
       else if (/^[0-9.]$/.test(label)) append(label);
     });
 
     function getVal(id){ return $(id).textContent.trim(); }
-    function setVal(id,v){ $(id).textContent = v; }
+    function setVal(id,v){ $(id).textContent = v; updateComputeButtonLabel(); }
 
     function append(ch){
-      const cur = getVal(active);
+      var cur = getVal(active);
       if (active !== "num" && ch === "." ) return; // str/end integers only
-      if (ch === "." && cur.includes(".")) return;
+      if (ch === "." && cur.indexOf(".") !== -1) return;
       setVal(active, cur + ch);
       buildRequest();
     }
     function backspace(){
-      const cur = getVal(active);
+      var cur = getVal(active);
       setVal(active, cur.slice(0,-1));
       buildRequest();
     }
@@ -476,7 +522,7 @@ const UI_HTML = `<!doctype html>
       buildRequest();
     }
 
-    $("clearBtn").onclick = () => {
+    $("clearBtn").onclick = function(){
       feedback();
       setVal("num","");
       setVal("str","");
@@ -488,57 +534,69 @@ const UI_HTML = `<!doctype html>
        Build request JSON preview
     ========================== */
     function buildRequest(){
-      const body = { num: getVal("num"), str: getVal("str"), end: getVal("end") };
-      const pretty = JSON.stringify(body, null, 2);
-      $("reqJson").textContent = pretty;
+      var body = { num: getVal("num"), str: getVal("str"), end: getVal("end") };
+      $("reqJson").textContent = JSON.stringify(body, null, 2);
       return body;
     }
-    // default range 1–50
-    if (!$("str").textContent && !$("end").textContent){
-      $("str").textContent = "1";
-      $("end").textContent = "50";
-    }
+    // No default chips; leave fields to user. Set helpful defaults if blank:
+    if (!$("str").textContent) $("str").textContent = "1";
     buildRequest();
+    updateComputeButtonLabel();
 
     /* =========================
-       Compute
+       Compute (finite or infinite)
     ========================== */
-    $("computeBtn").onclick = () => { feedback(false); compute(); };
+    $("computeBtn").onclick = function(){
+      var endVal = getVal("end");
+      if (infiniteOn && (endVal === "" || endVal === "∞")){
+        // toggle infinite
+        if (runningInfinite){
+          feedback(true);
+          stopInfinite();
+        } else {
+          var nVal = getVal("num"), sVal = getVal("str");
+          var N = Number(nVal), S = Number(sVal);
+          if (nVal === "" || sVal === "") return showError("Please fill Number and Start.");
+          if (!isFinite(N) || !isFinite(S)) return showError("num and str must be valid numbers.");
+          if (String(S).indexOf(".") !== -1) return showError("Start must be an integer.");
+          feedback(true);
+          startInfinite(N, S);
+        }
+        return;
+      }
+      // finite mode → backend
+      feedback(true);
+      computeFinite();
+    };
 
-    async function compute(){
+    async function computeFinite(){
       try{
-        const body = buildRequest();
-
-        // validate client-side
-        const N = Number(body.num), S = Number(body.str), E = Number(body.end);
-        if ([body.num, body.str, body.end].some(v => v==="" || v==null)) {
+        var body = buildRequest();
+        var N = Number(body.num), S = Number(body.str), E = Number(body.end);
+        if ([body.num, body.str, body.end].some(function(v){ return v==="" || v==null; })) {
           return showError("Please fill Number, Start and End.");
         }
-        if ([N,S,E].some(v => Number.isNaN(v) || !Number.isFinite(v))){
+        if ([N,S,E].some(function(v){ return isNaN(v) || !isFinite(v); })){
           return showError("num, str, end must be valid numbers.");
         }
-        if (!Number.isInteger(S) || !Number.isInteger(E)) {
-          return showError("str and end should be integers.");
+        if (String(S).indexOf(".") !== -1 || String(E).indexOf(".") !== -1) {
+          return showError("Start and End must be integers.");
         }
-        if (S > E) {
-          return showError("Start must be <= End.");
-        }
+        if (S > E) return showError("Start must be <= End.");
 
-        const res = await fetch(base + "/table", {
+        var res = await fetch(base + "/table", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({ num: N, str: S, end: E })
         });
-        const text = await res.text();
-
-        let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+        var text = await res.text();
+        var data; try { data = JSON.parse(text); } catch(e){ data = { raw: text }; }
 
         if (!res.ok) {
-          const msg = (data && (data.message || data.error || data.details)) || "HTTP " + res.status;
+          var msg = (data && (data.message || data.error || data.details)) || ("HTTP " + res.status);
           return showError(msg);
         }
 
-        // data is expected to be an array of strings like ["4 x 1 = 4", ...]
         showResult(data);
         pushHistory({ ts: new Date().toLocaleString(), num: N, str: S, end: E, result: data });
 
@@ -551,34 +609,40 @@ const UI_HTML = `<!doctype html>
        Render result + actions
     ========================== */
     function showResult(data){
-      const box = $("resultBox");
+      var box = $("resultBox");
+      box.dataset.mode = "finite";
       box.className = "result-box";
       if (Array.isArray(data)) {
         box.textContent = data.join("\\n");
-        $("copyBtn").onclick = () => copyText(data.join("\\n"));
-        $("dlJsonBtn").onclick = () => downloadFile("table.json", JSON.stringify(data, null, 2), "application/json");
-        $("dlTxtBtn").onclick = () => downloadFile("table.txt", data.join("\\n"), "text/plain");
+        $("copyBtn").onclick = function(){ copyText(data.join("\\n")); };
+        $("dlJsonBtn").onclick = function(){ downloadFile("table.json", JSON.stringify(data, null, 2), "application/json"); };
+        $("dlTxtBtn").onclick = function(){ downloadFile("table.txt", data.join("\\n"), "text/plain"); };
       } else {
-        box.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        box.textContent = (typeof data === "string") ? data : JSON.stringify(data, null, 2);
       }
     }
     function showError(msg){
-      const box = $("resultBox");
+      var box = $("resultBox");
       box.className = "result-box error";
       box.textContent = msg;
     }
     function copyText(t){
-      navigator.clipboard?.writeText(t).then(()=>alert("Copied!")).catch(()=>alert("Copy failed."));
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(t).then(function(){ alert("Copied!"); }).catch(function(){ alert("Copy failed."); });
+      } else {
+        alert("Clipboard not supported in this browser.");
+      }
     }
     function downloadFile(name, content, type){
-      const blob = new Blob([content], { type }); const a = document.createElement("a");
+      var blob = new Blob([content], { type: type });
+      var a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
     }
 
     /* =========================
        History
     ========================== */
-    $("clearHistory").onclick = () => {
+    $("clearHistory").onclick = function(){
       feedback();
       localStorage.removeItem(HIST_KEY);
       renderHistory();
@@ -587,30 +651,27 @@ const UI_HTML = `<!doctype html>
 
     function pushHistory(item){
       try {
-        const arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
+        var arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
         arr.unshift(item);
         localStorage.setItem(HIST_KEY, JSON.stringify(arr.slice(0,50)));
-      } catch {}
+      } catch(e){}
     }
     function renderHistory(){
-      const list = $("historyList"), empty = $("historyEmpty");
+      var list = $("historyList"), empty = $("historyEmpty");
       list.innerHTML = "";
-      let arr = [];
-      try { arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch {}
+      var arr = [];
+      try { arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch(e){}
       if (!arr.length){ empty.style.display="block"; return; }
       empty.style.display = "none";
-      arr.forEach((h, idx)=>{
-        const row = document.createElement("div");
+      arr.forEach(function(h, idx){
+        var row = document.createElement("div");
         row.className = "history-item";
-        row.innerHTML = \`
-          <div>\${h.ts} • num=\${h.num}, str=\${h.str}, end=\${h.end}</div>
-          <div>
-            <button data-act="rerun" data-idx="\${idx}">Re-run</button>
-          </div>\`;
-        row.querySelector("[data-act='rerun']").onclick = ()=>{
+        row.innerHTML = '<div>' + h.ts + ' • num=' + h.num + ', str=' + h.str + ', end=' + h.end + '</div>' +
+                        '<div><button data-act="rerun" data-idx="' + idx + '">Re-run</button></div>';
+        row.querySelector("[data-act='rerun']").onclick = function(){
           feedback();
-          setVal("num", String(h.num)); setVal("str", String(h.str)); setVal("end", String(h.end));
-          setScreen("table"); buildRequest(); compute();
+          setVal("num", String(h.num)); setVal("str", String(h.str)); setVal("end", String(h.end || ""));
+          setScreen("table"); buildRequest(); $("computeBtn").click();
         };
         list.appendChild(row);
       });
