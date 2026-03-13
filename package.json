@@ -1,9 +1,11 @@
 {
-  "name": "maths-table",
+  "name": "maths-table-ui",
   "version": "1.0.0",
-  "main": "app.js",
+  "description": "Android-like Maths Table UI with Node proxy to Mule",
+  "main": "server.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2"
