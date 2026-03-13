@@ -6,7 +6,7 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// Mule endpoint for tables (no /api here, per your example)
+// Mule endpoint for tables (no /api here)
 const MULE_TABLE_URL =
   process.env.MULE_TABLE_URL ||
   "https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table";
@@ -267,19 +267,19 @@ const UI_HTML = `<!doctype html>
   </div>
 
   <!-- Clickable watermark -->
-  <a class="watermark" href="https://github.com/Narsing-s" target="_blank" rel="noopener">#CreatedByNarsing-s</a>
+  <a class="watermark" href="https://github.com/Narsing-s" target="_blank" rel="noopener" aria-label="Created by Narsing-s">#CreatedByNarsing-s</a>
 
   <!-- Bottom nav -->
   <nav class="bottom-nav">
-    <a href="#table" class="nav-item active" data-screen="table" aria-label="Table">
+    <a class="nav-item active" href="#" data-screen="table">
       <div class="nav-ico">🧮</div>
       <div class="nav-label">Table</div>
     </a>
-    <a href="#history" class="nav-item" data-screen="history" aria-label="History">
+    <a class="nav-item" href="#" data-screen="history">
       <div class="nav-ico">🕘</div>
       <div class="nav-label">History</div>
     </a>
-    <a href="#settings" class="nav-item" data-screen="settings" aria-label="Settings">
+    <a class="nav-item" href="#" data-screen="settings">
       <div class="nav-ico">⚙️</div>
       <div class="nav-label">Settings</div>
     </a>
@@ -400,7 +400,8 @@ const UI_HTML = `<!doctype html>
     ========================== */
     function setScreen(name){
       ["table","history","settings"].forEach(s => {
-        $("screen-"+s)?.classList.toggle("active", s === name);
+        const el = $("screen-"+s);
+        if (el) el.classList.toggle("active", s === name);
       });
       document.querySelectorAll(".nav-item").forEach(a => {
         const scr = a.getAttribute("data-screen");
@@ -423,3 +424,244 @@ const UI_HTML = `<!doctype html>
       ["num","str","end"].forEach(f => $("f-"+f).classList.toggle("active", f===id));
     }
     $("f-num").addEventListener("click", ()=>{ feedback(); setActive("num"); });
+    $("f-str").addEventListener("click", ()=>{ feedback(); setActive("str"); });
+    $("f-end").addEventListener("click", ()=>{ feedback(); setActive("end"); });
+
+    /* =========================
+       Range chips
+    ========================== */
+    document.querySelectorAll("#chipRange .chip").forEach(c => c.addEventListener("click", () => {
+      feedback();
+      document.querySelectorAll("#chipRange .chip").forEach(e => e.classList.remove("active"));
+      c.classList.add("active");
+      $("str").textContent = c.getAttribute("data-str");
+      $("end").textContent = c.getAttribute("data-end");
+      buildRequest();
+    }));
+
+    /* =========================
+       Keypad
+    ========================== */
+    $("pad").addEventListener("click", (e)=>{
+      const key = e.target.closest(".key");
+      if (!key) return;
+      const act = key.getAttribute("data-act");
+      const label = key.textContent.trim();
+
+      feedback();
+
+      if (act === "back") backspace();
+      else if (act === "clear") clearActive();
+      else if (act === "compute") compute();
+      else if (/^[0-9.]$/.test(label)) append(label);
+    });
+
+    function getVal(id){ return $(id).textContent.trim(); }
+    function setVal(id,v){ $(id).textContent = v; }
+
+    function append(ch){
+      const cur = getVal(active);
+      if (active !== "num" && ch === "." ) return; // str/end integers only
+      if (ch === "." && cur.includes(".")) return;
+      setVal(active, cur + ch);
+      buildRequest();
+    }
+    function backspace(){
+      const cur = getVal(active);
+      setVal(active, cur.slice(0,-1));
+      buildRequest();
+    }
+    function clearActive(){
+      setVal(active, "");
+      buildRequest();
+    }
+
+    $("clearBtn").onclick = () => {
+      feedback();
+      setVal("num","");
+      setVal("str","");
+      setVal("end","");
+      buildRequest();
+    };
+
+    /* =========================
+       Build request JSON preview
+    ========================== */
+    function buildRequest(){
+      const body = { num: getVal("num"), str: getVal("str"), end: getVal("end") };
+      const pretty = JSON.stringify(body, null, 2);
+      $("reqJson").textContent = pretty;
+      return body;
+    }
+    // default range 1–50
+    if (!$("str").textContent && !$("end").textContent){
+      $("str").textContent = "1";
+      $("end").textContent = "50";
+    }
+    buildRequest();
+
+    /* =========================
+       Compute
+    ========================== */
+    $("computeBtn").onclick = () => { feedback(false); compute(); };
+
+    async function compute(){
+      try{
+        const body = buildRequest();
+
+        // validate client-side
+        const N = Number(body.num), S = Number(body.str), E = Number(body.end);
+        if ([body.num, body.str, body.end].some(v => v==="" || v==null)) {
+          return showError("Please fill Number, Start and End.");
+        }
+        if ([N,S,E].some(v => Number.isNaN(v) || !Number.isFinite(v))){
+          return showError("num, str, end must be valid numbers.");
+        }
+        if (!Number.isInteger(S) || !Number.isInteger(E)) {
+          return showError("str and end should be integers.");
+        }
+        if (S > E) {
+          return showError("Start must be <= End.");
+        }
+
+        const res = await fetch(base + "/table", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({ num: N, str: S, end: E })
+        });
+        const text = await res.text();
+
+        let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+        if (!res.ok) {
+          const msg = (data && (data.message || data.error || data.details)) || "HTTP " + res.status;
+          return showError(msg);
+        }
+
+        // data is expected to be an array of strings like ["4 x 1 = 4", ...]
+        showResult(data);
+        pushHistory({ ts: new Date().toLocaleString(), num: N, str: S, end: E, result: data });
+
+      } catch (e) {
+        showError(e.message || "Unexpected error");
+      }
+    }
+
+    /* =========================
+       Render result + actions
+    ========================== */
+    function showResult(data){
+      const box = $("resultBox");
+      box.className = "result-box";
+      if (Array.isArray(data)) {
+        box.textContent = data.join("\\n");
+        $("copyBtn").onclick = () => copyText(data.join("\\n"));
+        $("dlJsonBtn").onclick = () => downloadFile("table.json", JSON.stringify(data, null, 2), "application/json");
+        $("dlTxtBtn").onclick = () => downloadFile("table.txt", data.join("\\n"), "text/plain");
+      } else {
+        box.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+      }
+    }
+    function showError(msg){
+      const box = $("resultBox");
+      box.className = "result-box error";
+      box.textContent = msg;
+    }
+    function copyText(t){
+      navigator.clipboard?.writeText(t).then(()=>alert("Copied!")).catch(()=>alert("Copy failed."));
+    }
+    function downloadFile(name, content, type){
+      const blob = new Blob([content], { type }); const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    /* =========================
+       History
+    ========================== */
+    $("clearHistory").onclick = () => {
+      feedback();
+      localStorage.removeItem(HIST_KEY);
+      renderHistory();
+      alert("History cleared.");
+    };
+
+    function pushHistory(item){
+      try {
+        const arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]");
+        arr.unshift(item);
+        localStorage.setItem(HIST_KEY, JSON.stringify(arr.slice(0,50)));
+      } catch {}
+    }
+    function renderHistory(){
+      const list = $("historyList"), empty = $("historyEmpty");
+      list.innerHTML = "";
+      let arr = [];
+      try { arr = JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch {}
+      if (!arr.length){ empty.style.display="block"; return; }
+      empty.style.display = "none";
+      arr.forEach((h, idx)=>{
+        const row = document.createElement("div");
+        row.className = "history-item";
+        row.innerHTML = \`
+          <div>\${h.ts} • num=\${h.num}, str=\${h.str}, end=\${h.end}</div>
+          <div>
+            <button data-act="rerun" data-idx="\${idx}">Re-run</button>
+          </div>\`;
+        row.querySelector("[data-act='rerun']").onclick = ()=>{
+          feedback();
+          setVal("num", String(h.num)); setVal("str", String(h.str)); setVal("end", String(h.end));
+          setScreen("table"); buildRequest(); compute();
+        };
+        list.appendChild(row);
+      });
+    }
+
+    // Default to TABLE screen and init feedback toggles
+    setScreen("table");
+    initFeedbackSettingsUI();
+  </script>
+</body>
+</html>`;
+
+/* ---------- Serve UI ---------- */
+app.get("/", (_req, res) => res.type("html").send(UI_HTML));
+app.get("/ui", (_req, res) => res.type("html").send(UI_HTML));
+
+/* ---------- Proxy to Mule: POST /api/table ---------- */
+async function safeParse(resp) {
+  const text = await resp.text();
+  try { return { ok: true, data: JSON.parse(text), raw: text }; }
+  catch { return { ok: false, data: null, raw: text }; }
+}
+
+app.post("/api/table", async (req, res) => {
+  try {
+    const { num, str, end } = req.body || {};
+    if (num === undefined || str === undefined || end === undefined) {
+      return res.status(400).json({ error: "Body must include num, str, end" });
+    }
+
+    // Forward to Mule
+    const upstream = await fetch(MULE_TABLE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ num, str, end })
+    });
+    const parsed = await safeParse(upstream);
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).json(parsed.ok ? parsed.data : { rawResponse: parsed.raw });
+    }
+    return res.json(parsed.ok ? parsed.data : { raw: parsed.raw });
+  } catch (e) {
+    res.status(500).json({ error: "Proxy error", details: e.message });
+  }
+});
+
+/* ---------- Catch-all to UI (non-API) ---------- */
+app.get(/^\/(?!api|health).*$/, (_req, res) => res.type("html").send(UI_HTML));
+
+/* ---------- 404 (should rarely hit) ---------- */
+app.use((req, res) => res.status(404).json({ error: "Not Found", path: req.path }));
+
+app.listen(PORT, () => console.log("Maths UI running on port " + PORT));
