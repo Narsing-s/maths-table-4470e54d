@@ -16,7 +16,6 @@
 - Clean **bottom navigation** & clickable watermark `#CreatedByNarsing-s`
 
 ### 🛠 Endpoints (Server)
-- `GET /health` – health info
 - `POST /api/table` – finite mode (proxy → Mule); body: `{ "num": <number>, "str": <int>, "end": <int> }`
 
 > **Notes:**  
