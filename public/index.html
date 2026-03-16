@@ -1,0 +1,173 @@
+```html
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="UTF-8">
+<title>Animated Maths Table</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+margin:0;
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+font-family:system-ui;
+color:white;
+
+background:linear-gradient(-45deg,#1a2a6c,#2c5364,#0f2027,#203a43);
+background-size:400% 400%;
+animation:bg 12s infinite linear;
+}
+
+@keyframes bg{
+0%{background-position:0% 50%}
+50%{background-position:100% 50%}
+100%{background-position:0% 50%}
+}
+
+.card{
+background:rgba(255,255,255,.1);
+backdrop-filter:blur(10px);
+padding:25px;
+border-radius:18px;
+width:380px;
+box-shadow:0 10px 40px rgba(0,0,0,.4);
+}
+
+button{
+padding:10px 14px;
+margin:5px;
+border:none;
+border-radius:8px;
+cursor:pointer;
+background:linear-gradient(45deg,#00c6ff,#0072ff);
+color:white;
+font-weight:bold;
+}
+
+.keypad{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:10px;
+margin-top:20px;
+}
+
+.key{
+background:rgba(255,255,255,.2);
+padding:18px;
+border-radius:10px;
+text-align:center;
+cursor:pointer;
+}
+
+.result{
+margin-top:15px;
+white-space:pre-wrap;
+font-family:monospace;
+background:rgba(0,0,0,.3);
+padding:10px;
+border-radius:8px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="card">
+
+<h2>Multiplication Table</h2>
+
+<div>Number: <span id="num"></span></div>
+<div>Start: <span id="str">1</span></div>
+<div>End: <span id="end">10</span></div>
+
+<div>
+<button onclick="setActive('num')">Set Number</button>
+<button onclick="setActive('str')">Set Start</button>
+<button onclick="setActive('end')">Set End</button>
+</div>
+
+<div>
+<button onclick="compute()">Compute</button>
+<button onclick="clearAll()">Clear</button>
+</div>
+
+<div class="result" id="result"></div>
+
+<div class="keypad" id="pad">
+
+<div class="key">7</div>
+<div class="key">8</div>
+<div class="key">9</div>
+
+<div class="key">4</div>
+<div class="key">5</div>
+<div class="key">6</div>
+
+<div class="key">1</div>
+<div class="key">2</div>
+<div class="key">3</div>
+
+<div class="key">0</div>
+<div class="key">.</div>
+<div class="key">-</div>
+
+</div>
+
+</div>
+
+<script>
+
+const $ = id=>document.getElementById(id)
+
+let active="num"
+
+document.getElementById("pad").onclick=e=>{
+const k=e.target.closest(".key")
+if(!k)return
+$(active).textContent+=k.textContent
+}
+
+function setActive(v){
+active=v
+}
+
+async function compute(){
+
+const num=Number($("num").textContent)
+const str=Number($("str").textContent)
+const end=Number($("end").textContent)
+
+const res=await fetch("/api/table",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({num,str,end})
+})
+
+const data=await res.json()
+
+if(Array.isArray(data))
+$("result").textContent=data.join("\\n")
+else
+$("result").textContent=JSON.stringify(data,null,2)
+
+}
+
+function clearAll(){
+$("num").textContent=""
+$("str").textContent="1"
+$("end").textContent="10"
+$("result").textContent=""
+}
+
+</script>
+
+</body>
+</html>
+```
