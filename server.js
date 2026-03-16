@@ -1,111 +1,47 @@
-```javascript
-// server.js
+const express = require("express");
 
-const express = require("express")
+const app = express();
+app.use(express.json());
 
-const app = express()
-app.use(express.json())
-
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 3000;
 
 const MULE_TABLE_URL =
-process.env.MULE_TABLE_URL ||
-"https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table"
+  process.env.MULE_TABLE_URL ||
+  "https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table";
 
-/* ---------------- LOGS ---------------- */
+/* ---------- UI HTML ---------- */
 
-app.use((req,res,next)=>{
-console.log(new Date().toISOString(),req.method,req.url)
-next()
-})
-
-/* ---------------- HEALTH ---------------- */
-
-app.get("/health",(req,res)=>{
-res.json({status:"ok"})
-})
-
-/* ---------------- UI ---------------- */
-
-const UI = `
-
-<!DOCTYPE html>
-<html lang="en" data-theme="dark">
-
+const UI = `<!DOCTYPE html>
+<html>
 <head>
-
 <meta charset="UTF-8">
-<title>Ultimate Maths Table App</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multiplication Table</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 
-:root{
---bg:#0b1020;
---card:#121a2f;
---text:#fff;
---accent:#4ae387;
---accent2:#5aa1ff;
-}
-
-[data-theme="light"]{
---bg:#f3f6ff;
---card:#ffffff;
---text:#111;
---accent:#2563eb;
---accent2:#7c3aed;
-}
-
-[data-theme="neon"]{
---bg:#020617;
---card:#050a20;
---text:#00f7ff;
---accent:#00f7ff;
---accent2:#ff00ff;
-}
-
-[data-theme="ocean"]{
---bg:#021526;
---card:#033a5f;
---text:#bdf2ff;
---accent:#00c6ff;
---accent2:#0072ff;
-}
-
-[data-theme="sunset"]{
---bg:#2b0a0a;
---card:#441111;
---text:#ffd2b3;
---accent:#ff7e5f;
---accent2:#feb47b;
-}
-
 body{
-margin:0;
-background:var(--bg);
-color:var(--text);
-font-family:system-ui;
+font-family:Arial;
+background:#0b1020;
+color:white;
 padding:20px;
 }
 
 .card{
-background:var(--card);
-max-width:600px;
-margin:auto;
+background:#121a2f;
 padding:20px;
-border-radius:18px;
-box-shadow:0 20px 40px rgba(0,0,0,.4);
+border-radius:15px;
+max-width:500px;
+margin:auto;
 }
 
-.btn{
-padding:10px 16px;
-border:none;
-border-radius:12px;
-cursor:pointer;
+button{
+padding:10px;
 margin:4px;
-background:linear-gradient(135deg,var(--accent),var(--accent2));
+border:none;
+border-radius:8px;
+cursor:pointer;
 }
 
 .keypad{
@@ -116,11 +52,10 @@ margin-top:20px;
 }
 
 .key{
-background:rgba(255,255,255,.1);
+background:#333;
 padding:20px;
-border-radius:14px;
 text-align:center;
-font-size:20px;
+border-radius:10px;
 cursor:pointer;
 }
 
@@ -128,23 +63,20 @@ cursor:pointer;
 margin-top:20px;
 white-space:pre-wrap;
 font-family:monospace;
-background:rgba(255,255,255,.05);
-padding:12px;
-border-radius:10px;
-}
-
-canvas{
-margin-top:20px;
+background:#00000040;
+padding:10px;
+border-radius:8px;
 }
 
 </style>
+
 </head>
 
 <body>
 
 <div class="card">
 
-<h2>Ultimate Multiplication Table</h2>
+<h2>Multiplication Table</h2>
 
 <div>Number: <span id="num"></span></div>
 <div>Start: <span id="str">1</span></div>
@@ -152,27 +84,21 @@ margin-top:20px;
 
 <div>
 
-<button class="btn" id="setNum">Set Number</button>
-<button class="btn" id="setStr">Set Start</button>
-<button class="btn" id="setEnd">Set End</button>
+<button onclick="setActive('num')">Set Number</button>
+<button onclick="setActive('str')">Set Start</button>
+<button onclick="setActive('end')">Set End</button>
 
 </div>
 
 <div>
 
-<button class="btn" id="computeBtn">Compute</button>
-<button class="btn" id="graphBtn">Graph</button>
-<button class="btn" id="quizBtn">Quiz</button>
-<button class="btn" id="downloadBtn">Download</button>
-<button class="btn" id="historyBtn">History</button>
-<button class="btn" id="themeBtn">Theme</button>
-<button class="btn" id="clearBtn">Clear</button>
+<button onclick="compute()">Compute</button>
+<button onclick="graph()">Graph</button>
+<button onclick="clearAll()">Clear</button>
 
 </div>
 
-<div class="result" id="resultBox">
-Result will appear here
-</div>
+<div class="result" id="resultBox"></div>
 
 <canvas id="chart"></canvas>
 
@@ -200,234 +126,100 @@ Result will appear here
 
 <script>
 
-const $=id=>document.getElementById(id)
+const $ = id => document.getElementById(id)
 
-let active="num"
-let table=[]
+let active = "num"
+let table = []
 
-/* SOUND */
-
-let audio
-
-function tap(){
-
-try{
-
-audio=audio||new(window.AudioContext||window.webkitAudioContext)()
-
-const o=audio.createOscillator()
-const g=audio.createGain()
-
-o.frequency.value=350
-
-g.gain.setValueAtTime(.001,audio.currentTime)
-g.gain.exponentialRampToValueAtTime(.2,audio.currentTime+.01)
-g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.08)
-
-o.connect(g)
-g.connect(audio.destination)
-
-o.start()
-o.stop(audio.currentTime+.08)
-
-}catch(e){}
-
+function setActive(v){
+active=v
 }
 
-/* SELECT INPUT */
-
-$("setNum").onclick=()=>active="num"
-$("setStr").onclick=()=>active="str"
-$("setEnd").onclick=()=>active="end"
-
-/* KEYPAD */
-
-$("pad").onclick=e=>{
-
+document.getElementById("pad").onclick=e=>{
 const k=e.target.closest(".key")
-if(!k)return
-
-tap()
-
-$(active).textContent+=k.textContent
-
+if(!k) return
+$(active).textContent += k.textContent
 }
 
-/* COMPUTE */
-
-$("computeBtn").onclick=async()=>{
-
-tap()
+async function compute(){
 
 const num=Number($("num").textContent)
 const str=Number($("str").textContent)
 const end=Number($("end").textContent)
 
 const res=await fetch("/api/table",{
-
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({num,str,end})
-
 })
 
 const data=await res.json()
 
 if(Array.isArray(data)){
-
 table=data
-
-$("resultBox").textContent=data.join("\\n").replaceAll(" x "," × ")
-
-localStorage.setItem("lastTable",JSON.stringify(data))
-
+$("resultBox").textContent=data.join("\\n")
 }else{
-
 $("resultBox").textContent=JSON.stringify(data,null,2)
-
 }
 
 }
 
-/* GRAPH */
+function graph(){
 
-$("graphBtn").onclick=()=>{
-
-if(!table.length)return
+if(!table.length) return
 
 const labels=[]
 const vals=[]
 
 table.forEach((l,i)=>{
-
 const v=l.split("=")[1]
-
 labels.push(i+1)
 vals.push(Number(v))
-
 })
 
 new Chart($("chart"),{
-
 type:"line",
-
 data:{
 labels:labels,
-datasets:[{
-label:"Table",
-data:vals
-}]
+datasets:[{label:"Table",data:vals}]
 }
-
 })
 
 }
 
-/* QUIZ */
-
-$("quizBtn").onclick=()=>{
-
-const n=Number($("num").textContent)
-const r=Math.floor(Math.random()*10)+1
-
-const ans=prompt(n+" × "+r+" = ?")
-
-if(Number(ans)===n*r)
-alert("Correct!")
-else
-alert("Wrong! Answer: "+(n*r))
-
-}
-
-/* DOWNLOAD */
-
-$("downloadBtn").onclick=()=>{
-
-if(!table.length)return
-
-const blob=new Blob([table.join("\\n")])
-
-const a=document.createElement("a")
-
-a.href=URL.createObjectURL(blob)
-a.download="table.txt"
-a.click()
-
-}
-
-/* HISTORY */
-
-$("historyBtn").onclick=()=>{
-
-const h=localStorage.getItem("lastTable")
-
-if(!h)alert("No history")
-else $("resultBox").textContent=JSON.parse(h).join("\\n")
-
-}
-
-/* CLEAR */
-
-$("clearBtn").onclick=()=>{
-
-tap()
+function clearAll(){
 
 $("num").textContent=""
 $("str").textContent="1"
 $("end").textContent="10"
-
-$("resultBox").textContent="Result will appear here"
-
+$("resultBox").textContent=""
 table=[]
-
-}
-
-/* THEMES */
-
-const themes=["dark","light","neon","ocean","sunset"]
-
-let t=0
-
-$("themeBtn").onclick=()=>{
-
-tap()
-
-t=(t+1)%themes.length
-
-document.documentElement.setAttribute("data-theme",themes[t])
 
 }
 
 </script>
 
 </body>
-</html>
+</html>`;
 
-`
+/* ---------- Serve UI ---------- */
 
-/* ---------------- SERVE UI ---------------- */
+app.get("/", (req,res)=>{
+res.send(UI)
+});
 
-app.get("/",(req,res)=>{
-
-res.type("html").send(UI)
-
-})
-
-/* ---------------- MULE PROXY ---------------- */
+/* ---------- Mule Proxy ---------- */
 
 async function safeParse(r){
-
-const text=await r.text()
-
+const t = await r.text()
 try{
-return JSON.parse(text)
+return JSON.parse(t)
 }catch{
-return {raw:text}
+return {raw:t}
+}
 }
 
-}
-
-app.post("/api/table",async(req,res)=>{
+app.post("/api/table", async (req,res)=>{
 
 try{
 
@@ -451,11 +243,8 @@ res.status(500).json({error:e.message})
 
 })
 
-/* ---------------- SERVER ---------------- */
+/* ---------- Start Server ---------- */
 
-app.listen(PORT,()=>{
-
-console.log("Ultimate Maths App running on",PORT)
-
-})
-```
+app.listen(PORT, ()=>{
+console.log("Server running on port",PORT)
+});
