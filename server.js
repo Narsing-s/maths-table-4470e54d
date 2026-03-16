@@ -1,37 +1,42 @@
 ```javascript
 // server.js
-const express = require("express");
 
-const app = express();
-app.use(express.json());
+const express = require("express")
 
-const PORT = process.env.PORT || 3000;
+const app = express()
+app.use(express.json())
+
+const PORT = process.env.PORT || 3000
 
 const MULE_TABLE_URL =
-  process.env.MULE_TABLE_URL ||
-  "https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table";
+process.env.MULE_TABLE_URL ||
+"https://maths-table-jik9pb.5sc6y6-3.usa-e2.cloudhub.io/table"
 
-/* ---------- Logs ---------- */
-app.use((req, res, next) => {
-  console.log(req.method, req.url);
-  next();
-});
+/* ---------------- LOGS ---------------- */
 
-/* ---------- Health ---------- */
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
+app.use((req,res,next)=>{
+console.log(new Date().toISOString(),req.method,req.url)
+next()
+})
 
-/* ---------- UI ---------- */
+/* ---------------- HEALTH ---------------- */
 
-const UI_HTML = `
+app.get("/health",(req,res)=>{
+res.json({status:"ok"})
+})
+
+/* ---------------- UI ---------------- */
+
+const UI = `
+
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
+
 <head>
 
 <meta charset="UTF-8">
-<title>Maths Table App</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ultimate Maths Table App</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -61,20 +66,37 @@ const UI_HTML = `
 --accent2:#ff00ff;
 }
 
+[data-theme="ocean"]{
+--bg:#021526;
+--card:#033a5f;
+--text:#bdf2ff;
+--accent:#00c6ff;
+--accent2:#0072ff;
+}
+
+[data-theme="sunset"]{
+--bg:#2b0a0a;
+--card:#441111;
+--text:#ffd2b3;
+--accent:#ff7e5f;
+--accent2:#feb47b;
+}
+
 body{
+margin:0;
 background:var(--bg);
 color:var(--text);
 font-family:system-ui;
 padding:20px;
-margin:0;
 }
 
 .card{
 background:var(--card);
-padding:20px;
-border-radius:16px;
-max-width:550px;
+max-width:600px;
 margin:auto;
+padding:20px;
+border-radius:18px;
+box-shadow:0 20px 40px rgba(0,0,0,.4);
 }
 
 .btn{
@@ -82,8 +104,8 @@ padding:10px 16px;
 border:none;
 border-radius:12px;
 cursor:pointer;
-background:linear-gradient(135deg,var(--accent),var(--accent2));
 margin:4px;
+background:linear-gradient(135deg,var(--accent),var(--accent2));
 }
 
 .keypad{
@@ -96,7 +118,7 @@ margin-top:20px;
 .key{
 background:rgba(255,255,255,.1);
 padding:20px;
-border-radius:12px;
+border-radius:14px;
 text-align:center;
 font-size:20px;
 cursor:pointer;
@@ -111,6 +133,10 @@ padding:12px;
 border-radius:10px;
 }
 
+canvas{
+margin-top:20px;
+}
+
 </style>
 </head>
 
@@ -118,7 +144,7 @@ border-radius:10px;
 
 <div class="card">
 
-<h2>Multiplication Table</h2>
+<h2>Ultimate Multiplication Table</h2>
 
 <div>Number: <span id="num"></span></div>
 <div>Start: <span id="str">1</span></div>
@@ -138,12 +164,15 @@ border-radius:10px;
 <button class="btn" id="graphBtn">Graph</button>
 <button class="btn" id="quizBtn">Quiz</button>
 <button class="btn" id="downloadBtn">Download</button>
+<button class="btn" id="historyBtn">History</button>
 <button class="btn" id="themeBtn">Theme</button>
 <button class="btn" id="clearBtn">Clear</button>
 
 </div>
 
-<div class="result" id="resultBox">Result will appear here</div>
+<div class="result" id="resultBox">
+Result will appear here
+</div>
 
 <canvas id="chart"></canvas>
 
@@ -174,40 +203,58 @@ border-radius:10px;
 const $=id=>document.getElementById(id)
 
 let active="num"
-let currentTable=[]
+let table=[]
 
-/* Tap Sound */
-let audioCtx
+/* SOUND */
+
+let audio
+
 function tap(){
+
 try{
-audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)()
-const o=audioCtx.createOscillator()
-const g=audioCtx.createGain()
-o.frequency.value=300
-g.gain.setValueAtTime(.001,audioCtx.currentTime)
-g.gain.exponentialRampToValueAtTime(.2,audioCtx.currentTime+.01)
-g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.08)
+
+audio=audio||new(window.AudioContext||window.webkitAudioContext)()
+
+const o=audio.createOscillator()
+const g=audio.createGain()
+
+o.frequency.value=350
+
+g.gain.setValueAtTime(.001,audio.currentTime)
+g.gain.exponentialRampToValueAtTime(.2,audio.currentTime+.01)
+g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.08)
+
 o.connect(g)
-g.connect(audioCtx.destination)
+g.connect(audio.destination)
+
 o.start()
-o.stop(audioCtx.currentTime+.08)
+o.stop(audio.currentTime+.08)
+
 }catch(e){}
+
 }
 
-/* choose input */
+/* SELECT INPUT */
+
 $("setNum").onclick=()=>active="num"
 $("setStr").onclick=()=>active="str"
 $("setEnd").onclick=()=>active="end"
 
-/* keypad */
+/* KEYPAD */
+
 $("pad").onclick=e=>{
+
 const k=e.target.closest(".key")
 if(!k)return
+
 tap()
-$(active).textContent += k.textContent
+
+$(active).textContent+=k.textContent
+
 }
 
-/* compute */
+/* COMPUTE */
+
 $("computeBtn").onclick=async()=>{
 
 tap()
@@ -217,110 +264,170 @@ const str=Number($("str").textContent)
 const end=Number($("end").textContent)
 
 const res=await fetch("/api/table",{
+
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({num,str,end})
+
 })
 
 const data=await res.json()
 
 if(Array.isArray(data)){
-currentTable=data
+
+table=data
+
 $("resultBox").textContent=data.join("\\n").replaceAll(" x "," × ")
+
 localStorage.setItem("lastTable",JSON.stringify(data))
+
 }else{
+
 $("resultBox").textContent=JSON.stringify(data,null,2)
-}
 
 }
 
-/* graph */
+}
+
+/* GRAPH */
+
 $("graphBtn").onclick=()=>{
 
-if(!currentTable.length)return
+if(!table.length)return
 
 const labels=[]
 const vals=[]
 
-currentTable.forEach((l,i)=>{
+table.forEach((l,i)=>{
+
 const v=l.split("=")[1]
+
 labels.push(i+1)
 vals.push(Number(v))
+
 })
 
 new Chart($("chart"),{
+
 type:"line",
+
 data:{
 labels:labels,
-datasets:[{label:"Table",data:vals}]
+datasets:[{
+label:"Table",
+data:vals
+}]
 }
+
 })
 
 }
 
-/* quiz */
+/* QUIZ */
+
 $("quizBtn").onclick=()=>{
+
 const n=Number($("num").textContent)
 const r=Math.floor(Math.random()*10)+1
+
 const ans=prompt(n+" × "+r+" = ?")
+
 if(Number(ans)===n*r)
-alert("Correct")
+alert("Correct!")
 else
-alert("Wrong. Answer: "+(n*r))
+alert("Wrong! Answer: "+(n*r))
+
 }
 
-/* download */
+/* DOWNLOAD */
+
 $("downloadBtn").onclick=()=>{
-if(!currentTable.length)return
-const blob=new Blob([currentTable.join("\\n")])
+
+if(!table.length)return
+
+const blob=new Blob([table.join("\\n")])
+
 const a=document.createElement("a")
+
 a.href=URL.createObjectURL(blob)
 a.download="table.txt"
 a.click()
+
 }
 
-/* clear */
+/* HISTORY */
+
+$("historyBtn").onclick=()=>{
+
+const h=localStorage.getItem("lastTable")
+
+if(!h)alert("No history")
+else $("resultBox").textContent=JSON.parse(h).join("\\n")
+
+}
+
+/* CLEAR */
+
 $("clearBtn").onclick=()=>{
+
 tap()
+
 $("num").textContent=""
 $("str").textContent="1"
 $("end").textContent="10"
+
 $("resultBox").textContent="Result will appear here"
-currentTable=[]
+
+table=[]
+
 }
 
-/* theme */
-const themes=["dark","light","neon"]
+/* THEMES */
+
+const themes=["dark","light","neon","ocean","sunset"]
+
 let t=0
 
 $("themeBtn").onclick=()=>{
+
 tap()
+
 t=(t+1)%themes.length
+
 document.documentElement.setAttribute("data-theme",themes[t])
+
 }
 
 </script>
 
 </body>
 </html>
+
 `
 
-/* ---------- Serve UI ---------- */
+/* ---------------- SERVE UI ---------------- */
 
-app.get("/", (req, res) => res.type("html").send(UI_HTML))
+app.get("/",(req,res)=>{
 
-/* ---------- Mule Proxy ---------- */
+res.type("html").send(UI)
 
-async function safeParse(resp){
-const text=await resp.text()
+})
+
+/* ---------------- MULE PROXY ---------------- */
+
+async function safeParse(r){
+
+const text=await r.text()
+
 try{
 return JSON.parse(text)
 }catch{
 return {raw:text}
 }
+
 }
 
-app.post("/api/table", async (req,res)=>{
+app.post("/api/table",async(req,res)=>{
 
 try{
 
@@ -344,11 +451,11 @@ res.status(500).json({error:e.message})
 
 })
 
-/* ---------- Start Server ---------- */
+/* ---------------- SERVER ---------------- */
 
 app.listen(PORT,()=>{
 
-console.log("Server running on port",PORT)
+console.log("Ultimate Maths App running on",PORT)
 
 })
 ```
